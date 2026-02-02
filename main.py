@@ -4,8 +4,8 @@ import re
 import logging
 import sys
 from datetime import datetime, timedelta
-from telethon import TelegramClient, events
-from telethon.sessions import StringSession
+from telephony import TelegramClient, events
+from telephony.sessions import StringSession
 from aiohttp import web
 import asyncpg
 from openpyxl import Workbook
@@ -58,9 +58,8 @@ class PostgresDB:
         jour_id = await self.get_or_create_jour(game_number)
         async with self.pool.acquire() as conn:
             await conn.execute("INSERT INTO games (jour_id, game_number, suit, category, raw_line) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (jour_id, game_number) DO UPDATE SET suit = EXCLUDED.suit, category = EXCLUDED.category", jour_id, game_number, suit, category, raw_line)
-            cat_map = {'cat0': 'count_0', 'cat1': 'count_1', 'cat2': 'count_2', 'cat3': 'count_3', 'loss': 'count_loss'}
-            cat_key = 'loss' if category == 'loss' else f"cat{category}"
-            cat_col = cat_map.get(cat_key)
+            cat_map = {'0': 'count_0', '1': 'count_1', '2': 'count_2', '3': 'count_3', 'loss': 'count_loss'}
+            cat_col = cat_map.get(category)
             if cat_col:
                 await conn.execute(f"UPDATE jours SET total_games = total_games + 1, {cat_col} = {cat_col} + 1 WHERE jour_id = $1", jour_id)
             if game_number == JOUR_END:
@@ -87,7 +86,7 @@ db = PostgresDB(DATABASE_URL)
 
 def parse_game_message(message_text):
     games = []
-    lines = message_text.strip().split('\n')
+    lines = message_text.strip().split(chr(10))
     for line in lines:
         line = line.strip()
         if not line or '—' not in line:
@@ -121,7 +120,21 @@ async def send_bilan():
         stats = await db.get_jour_stats()
         if not stats:
             return
-        msg = f"BILAN\\nJournee: {stats['jour_id']}\\nTotal: {stats['total_games']}\\nCat0: {stats['count_0']}\\nCat1: {stats['count_1']}\\nCat2: {stats['count_2']}\\nCat3: {stats['count_3']}\\nLoss: {stats['count_loss']}"
+        lines = []
+        lines.append("📊 BILAN AUTOMATIQUE")
+        lines.append("")
+        lines.append(f"📅 Journée: {stats['jour_id']}")
+        lines.append(f"🎮 Total jeux: {stats['total_games']}")
+        lines.append("")
+        lines.append("📈 Répartition:")
+        lines.append(f"• ✅0️⃣: {stats['count_0']}")
+        lines.append(f"• ✅1️⃣: {stats['count_1']}")
+        lines.append(f"• ✅2️⃣: {stats['count_2']}")
+        lines.append(f"• ✅3️⃣: {stats['count_3']}")
+        lines.append(f"• ❌: {stats['count_loss']}")
+        lines.append("")
+        lines.append(f"⏰ Prochain bilan: {bilan_interval} min")
+        msg = chr(10).join(lines)
         await client.send_message(BILAN_CHANNEL_ID, msg)
         logger.info("Bilan envoye")
     except Exception as e:
@@ -156,7 +169,25 @@ async def handle_edited_message(event):
 async def cmd_start(event):
     if event.is_group or event.is_channel:
         return
-    text = "Bot Baccarat\\n/info - Bilan\\n/set_interval <min>\\n/force_bilan\\n/lis0 today/all\\n/lis1 today/all\\n/lis2 today/all\\n/lis3 today/all\\n/lis4 today/all\\n/inter - Export\\n/compare_all"
+    lines = []
+    lines.append("🤖 Bot Baccarat")
+    lines.append("")
+    lines.append("📊 Commandes:")
+    lines.append("• /info - Bilan du jour")
+    lines.append("• /set_interval <min> - Intervalle bilan")
+    lines.append("• /force_bilan - Bilan immédiat")
+    lines.append("")
+    lines.append("📋 Listes par catégorie:")
+    lines.append("• /lis0 today/all - ✅0️⃣")
+    lines.append("• /lis1 today/all - ✅1️⃣")
+    lines.append("• /lis2 today/all - ✅2️⃣")
+    lines.append("• /lis3 today/all - ✅3️⃣")
+    lines.append("• /lis4 today/all - ❌")
+    lines.append("")
+    lines.append("📁 Exports:")
+    lines.append("• /inter - Export Excel")
+    lines.append("• /compare_all - Comparaison")
+    text = chr(10).join(lines)
     await event.respond(text)
 
 @client.on(events.NewMessage(pattern=r'/set_interval\s+(\d+)'))
@@ -189,7 +220,19 @@ async def cmd_info(event):
     if not stats:
         await event.respond("Aucune donnee")
         return
-    text = f"Journee: {stats['jour_id']}\\nTotal: {stats['total_games']}\\nCat0: {stats['count_0']}\\nCat1: {stats['count_1']}\\nCat2: {stats['count_2']}\\nCat3: {stats['count_3']}\\nLoss: {stats['count_loss']}"
+    lines = []
+    lines.append("📊 Bilan Journée")
+    lines.append("")
+    lines.append(f"📅 Date: {stats['jour_id']}")
+    lines.append(f"🎮 Total jeux: {stats['total_games']}")
+    lines.append("")
+    lines.append("📈 Répartition:")
+    lines.append(f"• ✅0️⃣: {stats['count_0']}")
+    lines.append(f"• ✅1️⃣: {stats['count_1']}")
+    lines.append(f"• ✅2️⃣: {stats['count_2']}")
+    lines.append(f"• ✅3️⃣: {stats['count_3']}")
+    lines.append(f"• ❌: {stats['count_loss']}")
+    text = chr(10).join(lines)
     await event.respond(text)
 
 @client.on(events.NewMessage(pattern=r'/lis([0-4])$'))
@@ -197,7 +240,14 @@ async def cmd_lis_help(event):
     if event.is_group or event.is_channel:
         return
     num = event.pattern_match.group(1)
-    text = f"/lis{num} today - Aujourd'hui\\n/lis{num} all - Toute la base"
+    cat_names = {'0': '✅0️⃣', '1': '✅1️⃣', '2': '✅2️⃣', '3': '✅3️⃣', '4': '❌'}
+    cat = cat_names[num]
+    lines = []
+    lines.append(f"{cat} Commande /lis{num}")
+    lines.append("")
+    lines.append(f"📅 /lis{num} today - Aujourd'hui")
+    lines.append(f"🗄️ /lis{num} all - Toute la base")
+    text = chr(10).join(lines)
     await event.respond(text)
 
 @client.on(events.NewMessage(pattern=r'/lis([0-4])\s+(today|all)'))
@@ -208,6 +258,8 @@ async def cmd_lis_detail(event):
     option = event.pattern_match.group(2)
     cat_map = {'0': '0', '1': '1', '2': '2', '3': '3', '4': 'loss'}
     cat = cat_map[num]
+    cat_display = {'0': '✅0️⃣', '1': '✅1️⃣', '2': '✅2️⃣', '3': '✅3️⃣', 'loss': '❌'}
+    cat_emoji = cat_display[cat]
     try:
         if option == "today":
             rows = await db.get_numbers_by_category_and_jour(cat)
@@ -217,12 +269,18 @@ async def cmd_lis_detail(event):
             numbers = await db.get_numbers_by_category_all(cat)
             title = "TOUTE LA BASE"
         if not numbers:
-            await event.respond(f"Aucun numero categorie {cat}")
+            await event.respond(f"Aucun numero avec {cat_emoji}")
             return
-        text = f"Categorie {cat} - {title}\\nTotal: {len(numbers)}\\n\\n"
+        lines = []
+        lines.append(f"{cat_emoji} Numéros avec {cat_emoji}")
+        lines.append(f"📍 {title}")
+        lines.append("")
+        lines.append(f"📊 Total: {len(numbers)} numéros")
+        lines.append("")
         for i in range(0, len(numbers), 20):
             group = numbers[i:i+20]
-            text += ", ".join([str(n) for n in group]) + "\\n"
+            lines.append(", ".join([str(n) for n in group]))
+        text = chr(10).join(lines)
         await event.respond(text)
     except Exception as e:
         await event.respond(f"Erreur: {e}")
