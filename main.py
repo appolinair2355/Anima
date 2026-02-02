@@ -4,8 +4,8 @@ import re
 import logging
 import sys
 from datetime import datetime, timedelta
-from telephony import TelegramClient, events
-from telephony.sessions import StringSession
+from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from aiohttp import web
 import asyncpg
 from openpyxl import Workbook
