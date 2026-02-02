@@ -322,12 +322,21 @@ Configuration:
 • Journee: {JOUR_START} a {JOUR_END}
 • Bilan: Toutes les {bilan_interval} min
 
-Commandes:
+📊 **Commandes principales:**
 • /info - Bilan du jour
-• /set_interval <min> - Changer intervalle
+• /set_interval <min> - Changer intervalle bilan
 • /force_bilan - Envoyer bilan maintenant
-• /inter - Export Excel du jour
-• /compare_all - Comparaison globale"""
+
+📋 **Listes par categorie:**
+• /lis0 today/all - Liste ✅0️⃣
+• /lis1 today/all - Liste ✅1️⃣
+• /lis2 today/all - Liste ✅2️⃣
+• /lis3 today/all - Liste ✅3️⃣
+• /lis4 today/all - Liste ❌
+
+📁 **Exports Excel:**
+• /inter - Export du jour (par categorie)
+• /compare_all - Comparaison de toutes les journees"""
     await event.respond(help_text)
 
 @client.on(events.NewMessage(pattern=r'/set_interval\s+(\d+)'))
@@ -442,6 +451,82 @@ async def create_excel_export(jour_id=None, filename=None):
 
     wb.save(filename)
     return filename
+
+
+# Commandes /lis0, /lis1, /lis2, /lis3, /lis4
+@client.on(events.NewMessage(pattern=r'/lis([0-4])$'))
+async def cmd_lis_help(event):
+    """Affiche l'aide pour la commande /lisX"""
+    if event.is_group or event.is_channel:
+        return
+
+    num = event.pattern_match.group(1)
+    categories = {'0': '✅0️⃣', '1': '✅1️⃣', '2': '✅2️⃣', '3': '✅3️⃣', '4': '❌'}
+    category = categories[num]
+
+    help_text = f"""{category} **Commande /lis{num}**
+
+📅 **/lis{num} today** - Voir les numéros avec {category} aujourd'hui
+🗄️ **/lis{num} all** - Voir tous les numéros avec {category} (base complète)
+
+💡 Exemple: `/lis{num} today`"""
+
+    await event.respond(help_text)
+
+@client.on(events.NewMessage(pattern=r'/lis([0-4])\s+(today|all)'))
+async def cmd_lis_detail(event):
+    """Affiche les numéros par catégorie"""
+    if event.is_group or event.is_channel:
+        return
+
+    num = event.pattern_match.group(1)
+    option = event.pattern_match.group(2)
+
+    categories = {'0': '✅0️⃣', '1': '✅1️⃣', '2': '✅2️⃣', '3': '✅3️⃣', '4': '❌'}
+    category = categories[num]
+
+    try:
+        if option == "today":
+            # Numéros avec cette catégorie aujourd'hui
+            rows = await db.get_numbers_by_category_and_jour(category)
+            title = f"AUJOURD'HUI ({current_jour_id})"
+        else:
+            # Tous les numéros avec cette catégorie (toute la base)
+            async with db.pool.acquire() as conn:
+                rows_db = await conn.fetch("""
+                    SELECT DISTINCT game_number FROM games 
+                    WHERE category = $1
+                    ORDER BY game_number
+                """, category)
+                rows = [{'game_number': r['game_number']} for r in rows_db]
+            title = "TOUTE LA BASE"
+
+        if not rows:
+            await event.respond(f"❌ Aucun numéro avec {category} pour {title}")
+            return
+
+        numbers = [r['game_number'] for r in rows]
+
+        msg = f"""{category} **Numéros avec {category} - {title}**
+
+**Total: {len(numbers)} numéros**
+
+"""
+        # Afficher par groupes de 20
+        for i in range(0, len(numbers), 20):
+            group = numbers[i:i+20]
+            msg += ", ".join([str(n) for n in group]) + "
+"
+
+        msg += f"
+💡 Pour voir l'historique: `/number [numéro]`"
+
+        await event.respond(msg)
+
+    except Exception as e:
+        logger.error(f"Erreur lis{num}: {e}")
+        await event.respond(f"❌ Erreur: {e}")
+
 
 @client.on(events.NewMessage(pattern='/inter'))
 async def cmd_inter(event):
