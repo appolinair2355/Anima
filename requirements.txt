@@ -1,5 +1,5 @@
-telethon==1.35.0
-aiohttp==3.9.5
-openpyxl==3.1.2
-python-dotenv==1.0.1
-asyncpg==0.29.0
+telethon
+aiohttp
+openpyxl
+python-dotenv
+asyncpg
